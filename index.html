@@ -337,7 +337,7 @@
       var treated = YES.test(r.gritted), ice = num(r.ice_incidents), salt = num(r.salt_t), badCol = null, badVal = null;
       TEMP_COLS.forEach(function (c) { var v = parseFloat(r[c]); if (!isNaN(v) && v > MAX_TEMP_C && badCol === null) { badCol = c; badVal = v; } });
       if (badCol !== null) {            // leave the row out and count it
-        left.push({ date: r.date, id: r.route_id, col: badCol, val: badVal });
+        left.push({ date: r.date, id: r.route_id, col: badCol, val: badVal, gritted: r.gritted, decision: r.decision, salt: salt, ice: ice, note: (r.notes || "").trim().slice(0, 60) });
         if (treated) leftTot.runs += 1; leftTot.salt += salt; leftTot.ice += ice;
         return;
       }
@@ -386,6 +386,10 @@
     });
     L.push("- GRAND TOTAL | nights " + T.nights + " | runs " + T.runs + " | salt " + T.salt.toFixed(1) + " t | ice incidents " + T.ice +
       " | ice on nights gritted = yes " + T.iceGritted + " | ice on nights gritted = no " + T.iceNotGritted + " | nights decision = no salt " + T.noSalt);
+    L.push("LEFT OUT of the lines above (impossible temperature, above " + MAX_TEMP_C + " C): " + (hist.left.length ? hist.left.map(function (x) {
+      return x.id + " on " + x.date + ", " + x.col + " = " + x.val + " (that night: gritted = " + x.gritted + ", decision = " + x.decision + ", salt " + x.salt + " t, ice incidents " + x.ice +
+        (x.note ? ", crew note (untrusted): '" + x.note + "'" : "") + ")";
+    }).join("; ") : "none") + ". These " + hist.left.length + " row(s) are not in any total above.");
     return L.join("\n");
   }
 
@@ -479,7 +483,7 @@
     if (hist.left.length) {
       lw.hidden = false;
       lw.innerHTML = "<b>" + hist.left.length + " row" + (hist.left.length === 1 ? "" : "s") + " left out: impossible temperature (above " + MAX_TEMP_C + " C).</b> " +
-        hist.left.slice(0, 5).map(function (x) { return esc(x.id + " on " + x.date + ": " + x.col + " = " + x.val); }).join("; ") + (hist.left.length > 5 ? "; …" : "") +
+        hist.left.slice(0, 5).map(function (x) { return esc(x.id + " on " + x.date + ": " + x.col + " = " + x.val + " (gritted " + x.gritted + ", salt " + x.salt + " t, ice " + x.ice + ")"); }).join("; ") + (hist.left.length > 5 ? "; …" : "") +
         ". These rows are not counted in the table below.";
     } else { lw.hidden = true; }
     var h = "<thead><tr><th>Route</th><th>Nights</th><th>Runs (gritted = yes)</th><th>Salt (t)</th><th>Ice incidents</th><th>Ice, nights gritted = yes</th><th>Ice, nights gritted = no</th><th>Nights decision = no salt</th></tr></thead><tbody>";

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Winter Watch · County Cavan Roads</title>
+<style>
+  :root { --ink:#16222e; --mute:#5b6b7a; --line:#d5dde4; --bg:#f4f7fa; --card:#fff; --accent:#0b5c8f; --bad:#a4262c; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--accent); color:#fff; padding:16px 20px; }
+  header h1 { margin:0; font-size:1.3rem; }
+  header p { margin:2px 0 0; font-size:.85rem; opacity:.9; }
+  main { max-width:820px; margin:0 auto; padding:16px; display:grid; gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
+  details > summary { cursor:pointer; font-weight:600; }
+  label { display:block; font-size:.85rem; color:var(--mute); margin:10px 0 3px; }
+  select, input, textarea { width:100%; padding:8px; font:inherit; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  textarea { min-height:90px; resize:vertical; }
+  .row { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  button { font:inherit; padding:8px 16px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--accent); }
+  button:disabled { opacity:.5; cursor:wait; }
+  .status { font-size:.85rem; color:var(--mute); margin-top:8px; min-height:1.2em; }
+  #answer { white-space:pre-wrap; }
+  #error { white-space:pre-wrap; color:var(--bad); font-family:ui-monospace, Menlo, Consolas, monospace; font-size:.85rem; }
+  .meta { font-size:.8rem; color:var(--mute); margin-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Winter Watch</h1>
+  <p>Internal decision support for the County Cavan roads team. It recommends; the Duty Engineer decides.</p>
+</header>
+
+<main>
+  <section class="card">
+    <details id="settings" open>
+      <summary>Settings</summary>
+      <label for="provider">Provider</label>
+      <select id="provider">
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="openai">OpenAI</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="groq">Groq</option>
+      </select>
+      <label for="model">Model name</label>
+      <input id="model" type="text" autocomplete="off" spellcheck="false">
+      <label for="key">API key (stored only in this browser)</label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your key here">
+      <div class="row">
+        <button id="save" type="button">Save</button>
+        <button id="forget" type="button" class="secondary">Forget key</button>
+      </div>
+      <div class="status" id="settingsStatus"></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <label for="question" style="margin-top:0">Question</label>
+    <textarea id="question" placeholder="Ask anything…"></textarea>
+    <div class="row"><button id="send" type="button">Send</button></div>
+    <div class="status" id="sendStatus"></div>
+  </section>
+
+  <section class="card" id="outCard" hidden>
+    <div id="answer"></div>
+    <div id="error"></div>
+    <div class="meta" id="meta"></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // No key is ever written here. It is typed into the page and kept in this browser's localStorage.
+  var LS = { provider: "ww_provider", model: "ww_model", key: "ww_key" };
+
+  var DEFAULT_MODELS = {
+    openai: "gpt-4o-mini",
+    anthropic: "claude-sonnet-5-5",
+    gemini: "gemini-2.5-flash",
+    groq: "llama-3.3-70b-versatile"
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var providerEl = $("provider"), modelEl = $("model"), keyEl = $("key");
+
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { localStorage.setItem(k, v); }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+  function load() {
+    var p = lsGet(LS.provider) || "anthropic";
+    providerEl.value = p;
+    modelEl.value = lsGet(LS.model) || DEFAULT_MODELS[p];
+    var k = lsGet(LS.key);
+    keyEl.value = "";
+    keyEl.placeholder = k ? "Key saved in this browser (hidden)" : "Paste your key here";
+    $("settingsStatus").textContent = k ? "A key is saved in this browser." : "No key saved yet.";
+  }
+
+  providerEl.addEventListener("change", function () {
+    modelEl.value = DEFAULT_MODELS[providerEl.value];
+  });
+
+  $("save").addEventListener("click", function () {
+    try {
+      lsSet(LS.provider, providerEl.value);
+      lsSet(LS.model, modelEl.value.trim() || DEFAULT_MODELS[providerEl.value]);
+      if (keyEl.value.trim()) lsSet(LS.key, keyEl.value.trim());
+      load();
+      $("settingsStatus").textContent = "Saved.";
+    } catch (e) {
+      $("settingsStatus").textContent = "Could not save: " + e;
+    }
+  });
+
+  $("forget").addEventListener("click", function () {
+    lsDel(LS.provider); lsDel(LS.model); lsDel(LS.key);
+    keyEl.value = "";
+    load();
+    $("settingsStatus").textContent = "Key forgotten.";
+  });
+
+  // Build the request for each provider and pull the answer text out of the reply.
+  function buildRequest(provider, model, key, question) {
+    var json = { "Content-Type": "application/json" };
+    if (provider === "openai" || provider === "groq") {
+      var url = provider === "openai"
+        ? "https://api.openai.com/v1/chat/completions"
+        : "https://api.groq.com/openai/v1/chat/completions";
+      return {
+        url: url,
+        init: {
+          method: "POST",
+          headers: Object.assign({ Authorization: "Bearer " + key }, json),
+          body: JSON.stringify({ model: model, messages: [{ role: "user", content: question }] })
+        },
+        extract: function (d) { return d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content; }
+      };
+    }
+    if (provider === "anthropic") {
+      return {
+        url: "https://api.anthropic.com/v1/messages",
+        init: {
+          method: "POST",
+          headers: Object.assign({
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true"
+          }, json),
+          body: JSON.stringify({ model: model, max_tokens: 1024, messages: [{ role: "user", content: question }] })
+        },
+        extract: function (d) {
+          return (d.content || []).filter(function (b) { return b.type === "text"; })
+            .map(function (b) { return b.text; }).join("\n");
+        }
+      };
+    }
+    if (provider === "gemini") {
+      return {
+        url: "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent",
+        init: {
+          method: "POST",
+          headers: Object.assign({ "x-goog-api-key": key }, json),
+          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: question }] }] })
+        },
+        extract: function (d) {
+          var c = d.candidates && d.candidates[0];
+          return c && c.content && c.content.parts && c.content.parts.map(function (p) { return p.text || ""; }).join("");
+        }
+      };
+    }
+    throw new Error("Unknown provider: " + provider);
+  }
+
+  $("send").addEventListener("click", async function () {
+    var btn = $("send");
+    var q = $("question").value.trim();
+    var provider = lsGet(LS.provider), model = lsGet(LS.model), key = lsGet(LS.key);
+    $("outCard").hidden = false;
+    $("answer").textContent = ""; $("error").textContent = ""; $("meta").textContent = "";
+
+    if (!q) { $("error").textContent = "Type a question first."; return; }
+    if (!provider || !key) { $("error").textContent = "Save a provider and API key in Settings first."; return; }
+
+    btn.disabled = true;
+    $("sendStatus").textContent = "Asking " + provider + " (" + model + ")…";
+    try {
+      var req = buildRequest(provider, model, key, q);
+      var res = await fetch(req.url, req.init);
+      var raw = await res.text();
+      if (!res.ok) throw new Error("HTTP " + res.status + " " + res.statusText + "\n" + raw);
+      var data = JSON.parse(raw);
+      var text = req.extract(data);
+      if (!text) throw new Error("No answer text in the reply:\n" + raw);
+      $("answer").textContent = text;
+      $("meta").textContent = "Answered by " + provider + " · " + model + " · " + new Date().toLocaleString("en-IE") +
+        " · AI output is advice only; a person decides.";
+    } catch (e) {
+      $("error").textContent = "Error: " + (e && e.message ? e.message : e);
+    } finally {
+      btn.disabled = false;
+      $("sendStatus").textContent = "";
+    }
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

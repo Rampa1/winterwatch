@@ -367,8 +367,8 @@
     });
     L.push("DEPOT SALT HISTORY (Source 5 depot_stock_after_t against plan section 5 capacities):");
     hist.depots.forEach(function (d) {
-      L.push("- " + d.depot + " | capacity " + (PLAN.capacityT[d.depot] || "?") + " t | lowest stock after a night " + d.minStock + " t | nights below the 30% reorder level " + d.lowNights + " of " + d.nights +
-        " | nights routes were held back for stock " + d.held + " | no-salt nights " + d.noSalt);
+      L.push("- " + d.depot + " | capacity " + (PLAN.capacityT[d.depot] || "?") + " t | lowest stock after a night " + d.minStock + " t | route-nights (a route on a night) with depot stock below the 30% reorder level " + d.lowNights + " of " + d.nights +
+        " | route-nights held back for stock " + d.held + " | no-salt nights " + d.noSalt);
     });
     var T = hist.total;
     L.push("- ALL ROUTES | nights " + T.rows + " | gritting runs " + T.runs + " | salt " + T.salt.toFixed(1) + " t | ice incidents " + T.ice +

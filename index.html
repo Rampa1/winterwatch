@@ -327,6 +327,7 @@
   var YES = /^(1|true|yes|y|treated|gritted)$/i;
   var TEMP_COLS = ["min_air_c", "min_ground_c", "min_dewpoint_c", "forecast_ground_c"];
   var MAX_TEMP_C = 40;                                       // anything above this is an impossible reading
+  var EXCLUDE_IMPOSSIBLE = false;                            // false: such rows are flagged but still counted; true: they are left out of every total
 
   function num(v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; }
   function round2(x) { return Math.round(x * 100) / 100; }
@@ -336,10 +337,12 @@
     rows.forEach(function (r) {
       var treated = YES.test(r.gritted), ice = num(r.ice_incidents), salt = num(r.salt_t), badCol = null, badVal = null;
       TEMP_COLS.forEach(function (c) { var v = parseFloat(r[c]); if (!isNaN(v) && v > MAX_TEMP_C && badCol === null) { badCol = c; badVal = v; } });
-      if (badCol !== null) {            // leave the row out and count it
+      if (badCol !== null) {            // flag the row (always)
         left.push({ date: r.date, id: r.route_id, col: badCol, val: badVal, gritted: r.gritted, decision: r.decision, salt: salt, ice: ice, note: (r.notes || "").trim().slice(0, 60) });
-        if (treated) leftTot.runs += 1; leftTot.salt += salt; leftTot.ice += ice;
-        return;
+        if (EXCLUDE_IMPOSSIBLE) {       // ...and leave it out of the totals only if that switch is on
+          if (treated) leftTot.runs += 1; leftTot.salt += salt; leftTot.ice += ice;
+          return;
+        }
       }
       var id = r.route_id;
       if (!by[id]) { by[id] = { id: id, name: r.route, nights: 0, runs: 0, salt: 0, ice: 0, iceGritted: 0, iceNotGritted: 0, noSalt: 0 }; order.push(id); }
@@ -359,7 +362,7 @@
     }, { nights: 0, runs: 0, salt: 0, ice: 0, iceGritted: 0, iceNotGritted: 0, noSalt: 0 });
     tot.salt = round2(tot.salt);
     leftTot.salt = round2(leftTot.salt);
-    return { routes: list, total: tot, left: left, leftTot: leftTot, rowCount: rows.length, used: rows.length - left.length, seenGritted: seenGritted, seenDecision: seenDecision };
+    return { routes: list, total: tot, left: left, leftTot: leftTot, rowCount: rows.length, used: rows.length - (EXCLUDE_IMPOSSIBLE ? left.length : 0), seenGritted: seenGritted, seenDecision: seenDecision };
   }
 
   /* ---------- Build the short labelled message for the AI ---------- */
@@ -377,8 +380,10 @@
         " | plan limit " + r.limit.toFixed(1) + " C | RULE RESULT: " + r.result + " | " + r.reason);
     });
     var T = hist.total;
-    L.push("\nFive winters, summarised (Source 5, history.csv, summarised by code from " + hist.rowCount + " rows; " + hist.left.length +
-      " row" + (hist.left.length === 1 ? "" : "s") + " left out because a temperature was above " + MAX_TEMP_C + " C, so " + hist.used + " rows used). " +
+    var nFlag = hist.left.length, plural = nFlag === 1 ? "" : "s";
+    L.push("\nFive winters, summarised (Source 5, history.csv, summarised by code from " + hist.rowCount + " rows; " +
+      (EXCLUDE_IMPOSSIBLE ? nFlag + " row" + plural + " left out because a temperature was above " + MAX_TEMP_C + " C, so " + hist.used + " rows used). "
+        : "all " + hist.used + " rows are counted, including " + nFlag + " row" + plural + " with an impossible temperature (above " + MAX_TEMP_C + " C), listed at the end). ") +
       "One line per route: nights | runs (gritted = yes) | salt_t total | ice_incidents total | ice on nights gritted = yes | ice on nights gritted = no | nights where decision = no salt:");
     hist.routes.forEach(function (h) {
       L.push("- " + h.id + " " + h.name + " | nights " + h.nights + " | runs " + h.runs + " | salt " + h.salt.toFixed(1) + " t | ice incidents " + h.ice +
@@ -386,10 +391,10 @@
     });
     L.push("- GRAND TOTAL | nights " + T.nights + " | runs " + T.runs + " | salt " + T.salt.toFixed(1) + " t | ice incidents " + T.ice +
       " | ice on nights gritted = yes " + T.iceGritted + " | ice on nights gritted = no " + T.iceNotGritted + " | nights decision = no salt " + T.noSalt);
-    L.push("LEFT OUT of the lines above (impossible temperature, above " + MAX_TEMP_C + " C): " + (hist.left.length ? hist.left.map(function (x) {
+    L.push((EXCLUDE_IMPOSSIBLE ? "LEFT OUT of the lines above" : "FLAGGED, and INCLUDED in the lines above") + " (impossible temperature, above " + MAX_TEMP_C + " C): " + (hist.left.length ? hist.left.map(function (x) {
       return x.id + " on " + x.date + ", " + x.col + " = " + x.val + " (that night: gritted = " + x.gritted + ", decision = " + x.decision + ", salt " + x.salt + " t, ice incidents " + x.ice +
         (x.note ? ", crew note (untrusted): '" + x.note + "'" : "") + ")";
-    }).join("; ") : "none") + ". These " + hist.left.length + " row(s) are not in any total above.");
+    }).join("; ") : "none") + ". " + (EXCLUDE_IMPOSSIBLE ? "These " + nFlag + " row(s) are not in any total above." : "Treat the temperature reading as a sensor fault; the gritting, salt and ice figures on that night are counted."));
     return L.join("\n");
   }
 
@@ -478,13 +483,13 @@
 
   function renderHistory(hist) {
     var T = hist.total, L = hist.leftTot;
-    $("histStatus").textContent = "Rows read: " + hist.rowCount.toLocaleString("en-IE") + " · left out: " + hist.left.length + " · used: " + hist.used.toLocaleString("en-IE");
+    $("histStatus").textContent = "Rows read: " + hist.rowCount.toLocaleString("en-IE") + " · " + (EXCLUDE_IMPOSSIBLE ? "left out: " : "flagged (impossible temperature, still counted): ") + hist.left.length + " · used: " + hist.used.toLocaleString("en-IE");
     var lw = $("histLeft");
     if (hist.left.length) {
       lw.hidden = false;
-      lw.innerHTML = "<b>" + hist.left.length + " row" + (hist.left.length === 1 ? "" : "s") + " left out: impossible temperature (above " + MAX_TEMP_C + " C).</b> " +
+      lw.innerHTML = "<b>" + hist.left.length + " row" + (hist.left.length === 1 ? "" : "s") + (EXCLUDE_IMPOSSIBLE ? " left out" : " flagged, included in the table") + ": impossible temperature (above " + MAX_TEMP_C + " C).</b> " +
         hist.left.slice(0, 5).map(function (x) { return esc(x.id + " on " + x.date + ": " + x.col + " = " + x.val + " (gritted " + x.gritted + ", salt " + x.salt + " t, ice " + x.ice + ")"); }).join("; ") + (hist.left.length > 5 ? "; …" : "") +
-        ". These rows are not counted in the table below.";
+        (EXCLUDE_IMPOSSIBLE ? ". These rows are not counted in the table below." : ". The row is counted in the table below; only the temperature reading is doubtful.");
     } else { lw.hidden = true; }
     var h = "<thead><tr><th>Route</th><th>Nights</th><th>Runs (gritted = yes)</th><th>Salt (t)</th><th>Ice incidents</th><th>Ice, nights gritted = yes</th><th>Ice, nights gritted = no</th><th>Nights decision = no salt</th></tr></thead><tbody>";
     hist.routes.forEach(function (r) {
@@ -498,9 +503,9 @@
     var ok = asRead.rows === CHECK.rows && asRead.runs === CHECK.runs && Math.abs(asRead.salt - CHECK.salt) <= 0.0501;
     var ck = $("histCheck"); ck.hidden = false;
     ck.style.borderLeftColor = ok ? "#1b6e3c" : "#a4262c";
-    ck.innerHTML = "<b>" + (ok ? "Matches the three check figures once the rows left out are added back." : "Does NOT match the check figures.") + "</b><br>" +
-      "Rows as read " + asRead.rows.toLocaleString("en-IE") + " (check " + CHECK.rows.toLocaleString("en-IE") + ") &middot; runs " + asRead.runs + " = " + T.runs + " used + " + L.runs + " left out (check " + CHECK.runs +
-      ") &middot; salt " + asRead.salt.toFixed(2) + " t = " + T.salt.toFixed(2) + " used + " + L.salt.toFixed(2) + " left out (check " + CHECK.salt.toFixed(1) + ")" +
+    ck.innerHTML = "<b>" + (ok ? "Matches the three check figures" + (EXCLUDE_IMPOSSIBLE ? " once the rows left out are added back." : ".") : "Does NOT match the check figures.") + "</b><br>" +
+      "Rows as read " + asRead.rows.toLocaleString("en-IE") + " (check " + CHECK.rows.toLocaleString("en-IE") + ") &middot; runs " + asRead.runs + (EXCLUDE_IMPOSSIBLE ? " = " + T.runs + " used + " + L.runs + " left out" : "") + " (check " + CHECK.runs +
+      ") &middot; salt " + asRead.salt.toFixed(2) + " t" + (EXCLUDE_IMPOSSIBLE ? " = " + T.salt.toFixed(2) + " used + " + L.salt.toFixed(2) + " left out" : "") + " (check " + CHECK.salt.toFixed(1) + ")" +
       (ok ? "" : "<br>Values seen in 'gritted': " + esc(JSON.stringify(hist.seenGritted)) + "<br>Values seen in 'decision': " + esc(JSON.stringify(hist.seenDecision)));
   }
 

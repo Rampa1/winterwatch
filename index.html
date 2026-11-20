@@ -5,38 +5,110 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Winter Watch · County Cavan Roads</title>
 <style>
-  :root { --ink:#16222e; --mute:#5b6b7a; --line:#d5dde4; --bg:#f4f7fa; --card:#fff; --accent:#0b5c8f; --bad:#a4262c; --ok:#1b6e3c; --warn:#8a5a00; }
+  :root {
+    --ink:#14263a; --mute:#5a6b7d; --line:#d3dfea; --bg:#e9f1f8; --card:#ffffff;
+    --navy:#0f2a43; --blue:#1d6fb8; --teal:#0e8a9b; --ice:#e6f2fb;
+    --ok:#137a43; --ok-bg:#e0f4e8; --bad:#b3261e; --bad-bg:#fdebea; --warn:#8a5a00; --warn-bg:#fff3d6; --slate:#475569; --slate-bg:#eaeff4;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--ink); background:var(--bg); }
-  header { background:var(--accent); color:#fff; padding:16px 20px; }
-  header h1 { margin:0; font-size:1.3rem; }
-  header p { margin:2px 0 0; font-size:.85rem; opacity:.9; }
-  main { max-width:980px; margin:0 auto; padding:16px; display:grid; gap:16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
-  .card h2 { margin:0 0 8px; font-size:1.05rem; }
-  details > summary { cursor:pointer; font-weight:600; }
-  label { display:block; font-size:.85rem; color:var(--mute); margin:10px 0 3px; }
-  select, input, textarea { width:100%; padding:8px; font:inherit; border:1px solid var(--line); border-radius:6px; background:#fff; }
-  textarea { min-height:70px; resize:vertical; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--ink);
+    background:linear-gradient(180deg, #dbe9f5 0%, var(--bg) 260px, var(--bg) 100%); min-height:100vh; }
+  header { background:linear-gradient(110deg, var(--navy) 0%, #14507a 55%, var(--teal) 100%); color:#fff; padding:18px clamp(14px, 3vw, 36px); box-shadow:0 2px 10px rgba(15,42,67,.25); }
+  header h1 { margin:0; font-size:1.45rem; letter-spacing:.2px; }
+  header h1::before { content:"\2744\FE0E"; margin-right:10px; color:#bfe6ff; }
+  header p { margin:3px 0 0; font-size:.88rem; opacity:.92; }
+
+  main { width:100%; max-width:1760px; margin:0 auto; padding:clamp(10px, 2vw, 24px); display:grid; gap:18px; align-items:start; grid-template-columns:minmax(0,1fr); }
+  .side, .content { display:grid; gap:18px; min-width:0; }
+  @media (min-width: 1020px) {
+    main { grid-template-columns:minmax(300px, 340px) minmax(0, 1fr); }
+    .side { position:sticky; top:14px; }
+  }
+
+  .card { background:var(--card); border:1px solid var(--line); border-top:4px solid var(--blue); border-radius:10px; padding:14px 18px; box-shadow:0 1px 3px rgba(15,42,67,.07); min-width:0; }
+  .card.c-settings { border-top-color:var(--slate); }
+  .card.c-question { border-top-color:var(--blue); }
+  .card.c-advice   { border-top-color:var(--teal); }
+  .card.c-routes   { border-top-color:#2f80d0; }
+  .card.c-history  { border-top-color:#59a7dc; background:linear-gradient(180deg, #f4faff 0, #fff 90px); }
+  .card h2 { margin:0 0 8px; font-size:1.08rem; color:var(--navy); }
+  details > summary { cursor:pointer; font-weight:600; color:var(--navy); }
+  label { display:block; font-size:.84rem; color:var(--mute); margin:10px 0 3px; }
+  select, input, textarea { width:100%; padding:9px 10px; font:inherit; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); }
+  select:focus, input:focus, textarea:focus { outline:2px solid #8cc4ee; border-color:var(--blue); }
+  textarea { min-height:84px; resize:vertical; }
   .row { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
-  button { font:inherit; padding:8px 16px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
-  button.secondary { background:#fff; color:var(--accent); }
+  button { font:inherit; padding:9px 16px; border-radius:7px; border:1px solid var(--blue); background:var(--blue); color:#fff; cursor:pointer; transition:filter .12s, transform .05s; }
+  button:hover { filter:brightness(1.08); }
+  button:active { transform:translateY(1px); }
+  button.secondary { background:#fff; color:var(--blue); }
+  button.secondary:hover { background:var(--ice); filter:none; }
+  #send { background:var(--teal); border-color:var(--teal); font-weight:600; }
+  #approve { background:var(--ok); border-color:var(--ok); }
+  #reject { background:#fff; color:var(--bad); border-color:var(--bad); }
+  #reject:hover { background:var(--bad-bg); }
   button:disabled { opacity:.5; cursor:wait; }
   .status { font-size:.85rem; color:var(--mute); margin-top:8px; min-height:1.2em; }
-  #answer { white-space:pre-wrap; }
-  #error { white-space:pre-wrap; color:var(--bad); font-family:ui-monospace, Menlo, Consolas, monospace; font-size:.85rem; }
+  #answer { white-space:pre-wrap; background:var(--ice); border-left:4px solid var(--teal); border-radius:6px; padding:12px 14px; }
+  #error { white-space:pre-wrap; color:var(--bad); font-family:ui-monospace, Menlo, Consolas, monospace; font-size:.85rem; word-break:break-word; }
+  #error:not(:empty) { background:var(--bad-bg); border-left:4px solid var(--bad); border-radius:6px; padding:10px 12px; }
   .meta { font-size:.8rem; color:var(--mute); margin-top:8px; }
-  .scroll { overflow-x:auto; }
-  table { border-collapse:collapse; width:100%; font-size:.85rem; }
-  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; white-space:nowrap; }
-  td.wrap { white-space:normal; min-width:200px; }
-  th { background:#eef3f7; font-weight:600; }
-  .t-Treat { color:var(--ok); font-weight:700; }
-  .t-Flag { color:var(--bad); font-weight:700; }
-  .t-Hold, .t-Dont { color:var(--mute); font-weight:700; }
-  .alert { border-left:4px solid var(--warn); background:#fff8e6; padding:8px 12px; margin:8px 0; font-size:.88rem; }
-  pre { white-space:pre-wrap; font:12px/1.45 ui-monospace, Menlo, Consolas, monospace; background:#f0f4f7; padding:10px; border-radius:6px; margin:6px 0 0; }
-  .src { font-size:.75rem; color:var(--mute); }
+  #cost:not(:empty) { color:var(--navy); background:var(--ice); border-radius:6px; padding:6px 10px; display:inline-block; }
+  .scroll { overflow-x:auto; border-radius:6px; }
+
+  table { border-collapse:collapse; width:100%; font-size:.86rem; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid #e3ebf2; vertical-align:top; white-space:nowrap; }
+  td.wrap { white-space:normal; min-width:260px; }
+  .sub { font-size:.76rem; color:var(--mute); font-weight:400; }
+  th { background:#dfeaf5; color:var(--navy); font-weight:600; position:sticky; top:0; }
+  tbody tr:nth-child(even) { background:#f7fafd; }
+  tbody tr:hover { background:#eaf4fc; }
+  tfoot th { background:var(--navy); color:#fff; }
+  #histTable th { white-space:normal; vertical-align:bottom; line-height:1.25; }
+  #histTable td, #histTable th { padding-left:7px; padding-right:7px; }
+
+  /* result pills and row tints */
+  .t-Treat, .t-Flag, .t-Hold, .t-Don { display:inline-block; padding:2px 10px; border-radius:999px; font-weight:700; font-size:.8rem; }
+  .t-Treat { color:var(--ok); background:var(--ok-bg); }
+  .t-Flag  { color:var(--bad); background:var(--bad-bg); }
+  .t-Hold  { color:var(--warn); background:var(--warn-bg); }
+  .t-Don   { color:var(--slate); background:var(--slate-bg); }
+  tr.r-Treat { box-shadow:inset 4px 0 0 var(--ok); }
+  tr.r-Flag  { box-shadow:inset 4px 0 0 var(--bad); }
+  tr.r-Hold  { box-shadow:inset 4px 0 0 #d99a00; }
+  tr.r-Don   { box-shadow:inset 4px 0 0 #b7c3d0; }
+  .yes { color:#0c5f8f; font-weight:600; }
+
+  /* history: colour the two ice columns */
+  th.c-g, td.c-g { background:#e3f0fb; color:#0c4f80; }
+  th.c-n, td.c-n { background:#fdeee0; color:#9a4a00; }
+  tfoot th.c-g { background:#2b6fa8; color:#fff; }
+  tfoot th.c-n { background:#c2600d; color:#fff; }
+  td.hot { font-weight:700; }
+
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin:10px 0 12px; }
+  .tile { border-radius:9px; padding:10px 12px; color:#fff; }
+  .tile b { display:block; font-size:1.45rem; line-height:1.15; }
+  .tile span { font-size:.76rem; opacity:.92; }
+  .tile.t1 { background:linear-gradient(135deg, #14507a, #1d6fb8); }
+  .tile.t2 { background:linear-gradient(135deg, #0b6f7d, #0e8a9b); }
+  .tile.t3 { background:linear-gradient(135deg, #5a6b7d, #7b8da0); }
+  .tile.t4 { background:linear-gradient(135deg, #1f6fae, #59a7dc); }
+  .tile.t5 { background:linear-gradient(135deg, #c2600d, #e08a3c); }
+
+  .alert { border-left:4px solid var(--warn); background:var(--warn-bg); padding:9px 12px; margin:8px 0; font-size:.88rem; border-radius:0 6px 6px 0; }
+  pre { white-space:pre-wrap; word-break:break-word; font:12px/1.45 ui-monospace, Menlo, Consolas, monospace; background:#eef3f8; padding:10px; border-radius:6px; margin:6px 0 0; max-height:460px; overflow:auto; }
+  .src { font-size:.75rem; color:var(--mute); font-weight:400; }
+
+  @media (max-width: 640px) {
+    body { font-size:15px; }
+    header h1 { font-size:1.2rem; }
+    .card { padding:12px 12px; }
+    th, td { padding:6px 7px; }
+    button { flex:1 1 auto; }
+    .row { gap:6px; }
+  }
 </style>
 </head>
 <body>
@@ -46,7 +118,8 @@
 </header>
 
 <main>
-  <section class="card">
+  <aside class="side">
+  <section class="card c-settings">
     <details id="settings" open>
       <summary>Settings</summary>
       <label for="provider">Provider</label>
@@ -72,7 +145,7 @@
     </details>
   </section>
 
-  <section class="card">
+  <section class="card c-question">
     <label for="question" style="margin-top:0">Question for tonight</label>
     <textarea id="question">Do we grit tonight? Which routes, and when do the trucks leave?</textarea>
     <div class="row">
@@ -82,8 +155,10 @@
     </div>
     <div class="status" id="sendStatus"></div>
   </section>
+  </aside>
 
-  <section class="card" id="outCard" hidden>
+  <div class="content">
+  <section class="card c-advice" id="outCard" hidden>
     <div id="alerts"></div>
     <div id="answerBlock" hidden>
       <h2>Advice <span class="src">(AI explanation of the rule results below)</span></h2>
@@ -99,7 +174,7 @@
     <div class="meta" id="meta"></div>
   </section>
 
-  <section class="card" id="tableCard" hidden>
+  <section class="card c-routes" id="tableCard" hidden>
     <h2>Route lines (the numbers the AI was given)</h2>
     <div class="src" id="tableSrc"></div>
     <div class="scroll"><table id="table"></table></div>
@@ -107,13 +182,15 @@
     <details style="margin-top:10px"><summary>Exact message sent to the AI</summary><pre id="sent"></pre></details>
   </section>
 
-  <section class="card" id="histCard">
+  <section class="card c-history" id="histCard">
     <h2>Five winters, summarised <span class="src">(Source 5, history.csv, fetched once when this page loaded; this is all the AI is told about the past)</span></h2>
+    <div class="tiles" id="histTiles"></div>
     <div class="status" id="histStatus">Loading five winters…</div>
     <div class="alert" id="histLeft" hidden></div>
     <div class="scroll"><table id="histTable"></table></div>
     <div class="alert" id="histCheck" hidden style="margin-top:10px"></div>
   </section>
+  </div>
 </main>
 
 <script>
@@ -448,7 +525,7 @@
 
   function costLine(u) {
     if (!u || u.inp === undefined || u.out === undefined) return "Tokens: the provider did not report usage in this reply.";
-    var pin = parseFloat(lsGet(LS_PIN)), pout = parseFloat(lsGet(LS_POUT));
+    var pin = parseFloat($("pin").value), pout = parseFloat($("pout").value);
     var line = "Tokens used: " + u.inp.toLocaleString("en-IE") + " in + " + u.out.toLocaleString("en-IE") + " out = " + (u.inp + u.out).toLocaleString("en-IE");
     if (isNaN(pin) || isNaN(pout)) return line + ". Enter your model's prices in Settings (and Save) to see the cost.";
     var cost = (u.inp * pin + u.out * pout) / 1e6;
@@ -463,13 +540,14 @@
 
   function renderTables(result, depots, fetchedAt) {
     $("tableSrc").textContent = "Sources fetched fresh at " + fetchedAt + ": depots (Source 1), routes (Source 2), forecast (Source 3 Open-Meteo, next 18 hours), plan (Source 4). Five winters (Source 5) was fetched once when the page loaded. Rules applied by code; the AI only explains.";
-    var h = "<tr><th>Route</th><th>P</th><th>Depot</th><th>km</th><th>Salt needed (t)</th><th>Forecast min ground</th><th>First at or below 0 C</th><th>Wet</th><th>Plan limit</th><th>Result</th><th>Why / timing</th></tr>";
+    var h = "<thead><tr><th>Route</th><th>Result</th><th>Salt (t)</th><th>Forecast min ground</th><th>First at or below 0 C</th><th>Wet</th><th>Why / timing</th></tr></thead><tbody>";
     result.routes.forEach(function (r) {
-      h += "<tr><td>" + esc(r.id + " " + r.name) + "</td><td>" + r.pri + "</td><td>" + esc(r.depot) + "</td><td>" + r.km + "</td><td>" + r.need + "</td><td>" +
-        r.minG.toFixed(1) + " C at " + r.minAt + (r.overridden ? " (override)" : "") + "</td><td>" + (r.below0 ? hhmm(r.below0.m) : "none") + "</td><td>" + (r.wetAny ? "yes" : "no") +
-        "</td><td>&le; " + r.limit.toFixed(1) + " C</td><td class='" + cls(r.result) + "'>" +
-        esc(r.result) + "</td><td class='wrap'>" + esc(r.reason) + "</td></tr>";
+      h += "<tr class='r-" + cls(r.result).slice(2) + "'><td><b>" + esc(r.id + " " + r.name) + "</b><div class='sub'>Priority " + r.pri + " &middot; " + esc(r.depot) + " &middot; " + r.km + " km</div></td>" +
+        "<td><span class='" + cls(r.result) + "'>" + esc(r.result) + "</span></td><td>" + r.need + "</td><td>" +
+        r.minG.toFixed(1) + " C at " + r.minAt + (r.overridden ? " (override)" : "") + "<div class='sub'>plan limit &le; " + r.limit.toFixed(1) + " C</div></td><td>" + (r.below0 ? hhmm(r.below0.m) : "none") + "</td><td" + (r.wetAny ? " class='yes'" : "") + ">" + (r.wetAny ? "yes" : "no") +
+        "</td><td class='wrap'>" + esc(r.reason) + "</td></tr>";
     });
+    h += "</tbody>";
     $("table").innerHTML = h;
     var d = "<tr><th>Depot</th><th>Salt (t)</th><th>Capacity (t, plan s5)</th><th>Trucks</th><th>Drivers</th><th>Note (untrusted)</th></tr>";
     depots.forEach(function (x) {
@@ -491,12 +569,18 @@
         hist.left.slice(0, 5).map(function (x) { return esc(x.id + " on " + x.date + ": " + x.col + " = " + x.val + " (gritted " + x.gritted + ", salt " + x.salt + " t, ice " + x.ice + ")"); }).join("; ") + (hist.left.length > 5 ? "; …" : "") +
         (EXCLUDE_IMPOSSIBLE ? ". These rows are not counted in the table below." : ". The row is counted in the table below; only the temperature reading is doubtful.");
     } else { lw.hidden = true; }
-    var h = "<thead><tr><th>Route</th><th>Nights</th><th>Runs (gritted = yes)</th><th>Salt (t)</th><th>Ice incidents</th><th>Ice, nights gritted = yes</th><th>Ice, nights gritted = no</th><th>Nights decision = no salt</th></tr></thead><tbody>";
+    var h = "<thead><tr><th>Route</th><th>Nights</th><th>Runs (gritted = yes)</th><th>Salt (t)</th><th>Ice incidents</th><th class='c-g'>Ice, nights gritted = yes</th><th class='c-n'>Ice, nights gritted = no</th><th>Nights decision = no salt</th></tr></thead><tbody>";
     hist.routes.forEach(function (r) {
-      h += "<tr><td>" + esc(r.id + " " + r.name) + "</td><td>" + r.nights + "</td><td>" + r.runs + "</td><td>" + r.salt.toFixed(1) + "</td><td>" + r.ice + "</td><td>" + r.iceGritted + "</td><td>" + r.iceNotGritted + "</td><td>" + r.noSalt + "</td></tr>";
+      h += "<tr><td>" + esc(r.id + " " + r.name) + "</td><td>" + r.nights + "</td><td>" + r.runs + "</td><td>" + r.salt.toFixed(1) + "</td><td>" + r.ice + "</td><td class='c-g" + (r.iceGritted >= 5 ? " hot" : "") + "'>" + r.iceGritted + "</td><td class='c-n" + (r.iceNotGritted >= 5 ? " hot" : "") + "'>" + r.iceNotGritted + "</td><td>" + r.noSalt + "</td></tr>";
     });
-    h += "</tbody><tfoot><tr><th>Grand total</th><th>" + T.nights + "</th><th>" + T.runs + "</th><th>" + T.salt.toFixed(1) + "</th><th>" + T.ice + "</th><th>" + T.iceGritted + "</th><th>" + T.iceNotGritted + "</th><th>" + T.noSalt + "</th></tr></tfoot>";
+    h += "</tbody><tfoot><tr><th>Grand total</th><th>" + T.nights + "</th><th>" + T.runs + "</th><th>" + T.salt.toFixed(1) + "</th><th>" + T.ice + "</th><th class='c-g'>" + T.iceGritted + "</th><th class='c-n'>" + T.iceNotGritted + "</th><th>" + T.noSalt + "</th></tr></tfoot>";
     $("histTable").innerHTML = h;
+    $("histTiles").innerHTML =
+      "<div class='tile t1'><b>" + T.nights.toLocaleString("en-IE") + "</b><span>route-nights</span></div>" +
+      "<div class='tile t2'><b>" + T.runs + "</b><span>gritting runs</span></div>" +
+      "<div class='tile t3'><b>" + T.salt.toFixed(1) + " t</b><span>salt spread</span></div>" +
+      "<div class='tile t4'><b>" + T.iceGritted + "</b><span>ice incidents, nights gritted</span></div>" +
+      "<div class='tile t5'><b>" + T.iceNotGritted + "</b><span>ice incidents, nights not gritted</span></div>";
 
     // Check against the brief's three figures, which count every row as read (so add back the rows left out)
     var asRead = { rows: hist.rowCount, runs: T.runs + L.runs, salt: round2(T.salt + L.salt) };

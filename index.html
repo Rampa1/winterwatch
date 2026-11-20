@@ -205,7 +205,7 @@
 
   function parseCSV(text) {
     var rows = [], row = [], f = "", q = false, i, c;
-    text = text.replace(/^﻿/, "");
+    text = text.replace(/^\uFEFF/, "");
     for (i = 0; i < text.length; i++) {
       c = text[i];
       if (q) {
@@ -222,7 +222,7 @@
     });
   }
 
-  /* ---------- Forecast: lowest ground temperature tonight (18:00 to 09:00) per route ---------- */
+  /* ---------- Forecast: lowest ground temperature in the next 18 hours, per route ---------- */
   function hhmm(m) { m = ((m % 1440) + 1440) % 1440; return ("0" + Math.floor(m / 60)).slice(-2) + ":" + ("0" + (m % 60)).slice(-2); }
 
   var HOURS_AHEAD = 18;   // the next 18 hourly values of Source 3

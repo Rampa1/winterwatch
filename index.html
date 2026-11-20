@@ -50,9 +50,16 @@
   #reject:hover { background:var(--bad-bg); }
   button:disabled { opacity:.5; cursor:wait; }
   .status { font-size:.85rem; color:var(--mute); margin-top:8px; min-height:1.2em; }
-  #answer { white-space:pre-wrap; background:var(--ice); border-left:4px solid var(--teal); border-radius:6px; padding:12px 14px; }
+  #answer { background:var(--ice); border-left:4px solid var(--teal); border-radius:6px; padding:12px 14px; }
   #error { white-space:pre-wrap; color:var(--bad); font-family:ui-monospace, Menlo, Consolas, monospace; font-size:.85rem; word-break:break-word; }
   #error:not(:empty) { background:var(--bad-bg); border-left:4px solid var(--bad); border-radius:6px; padding:10px 12px; }
+  #answer h4 { margin:12px 0 4px; color:var(--navy); font-size:1rem; }
+  #answer h4:first-child { margin-top:0; }
+  #answer p { margin:6px 0; }
+  #answer ul { margin:4px 0 8px; padding-left:20px; }
+  #answer li { margin:3px 0; }
+  table.md th { background:#cfe3f4; }
+  table.md { background:#fff; margin:6px 0; }
   .meta { font-size:.8rem; color:var(--mute); margin-top:8px; }
   #cost:not(:empty) { color:var(--navy); background:var(--ice); border-radius:6px; padding:6px 10px; display:inline-block; }
   .scroll { overflow-x:auto; border-radius:6px; }
@@ -207,7 +214,7 @@
   };
   // US$ per million tokens (input, output). Source: platform.claude.com/docs/en/about-claude/pricing (Haiku: prompts up to 100k tokens).
   var PRICES = { "claude-sonnet-5-5": [2, 10], "claude-opus-5-5": [4, 20], "claude-haiku-5-5": [0.10, 0.50], "claude-fable-5-2": [8, 40] };
-  var LS_PIN = "ww_pin", LS_POUT = "ww_pout", sessionCost = 0, sessionQs = 0;
+  var LS_PIN = "ww_pin", LS_POUT = "ww_pout", sessionCost = 0, sessionQs = 0, lastAnswer = "";
   var $ = function (id) { return document.getElementById(id); };
   var providerEl = $("provider"), modelEl = $("model"), keyEl = $("key");
 
@@ -331,17 +338,6 @@
     return { pts: pts, min: min, below0: below0, wetAny: wetAny, wetWhy: wetWhy, issued: t[0] };
   }
 
-  function wetNight(pts, limit) {
-    // Wet if, at any night hour with the ground at or below the route's limit, there is rain or the dew point is within 1 C of the ground.
-    var hrs = pts.filter(function (p) { return p.g <= limit; });
-    for (var i = 0; i < hrs.length; i++) {
-      var p = hrs[i];
-      if ((p.pr || 0) > 0) return { wet: true, why: "rain " + p.pr + " mm at " + hhmm(p.m) };
-      if (p.dp != null && Math.abs(p.dp - p.g) <= PLAN.wetGapC) return { wet: true, why: "dew point " + p.dp.toFixed(1) + " C within 1 C of ground " + p.g.toFixed(1) + " C at " + hhmm(p.m) };
-    }
-    return { wet: false, why: "no rain and dew point more than 1 C from ground" };
-  }
-
   /* ---------- The plan as a decision, route by route ---------- */
   function decide(routes, depots, fc) {
     var dmap = {}; depots.forEach(function (d) {
@@ -362,9 +358,7 @@
       var dep = dmap[r.depot];
       if (!dep) { r.result = "Flag"; r.reason = "Depot '" + r.depot + "' not found in tonight.csv"; return; }
       if (!(r.minG <= r.limit)) { r.result = "Don't treat"; r.reason = "Ground minimum " + r.minG.toFixed(1) + " C stays above the P" + r.pri + " limit of " + r.limit.toFixed(1) + " C"; return; }
-      var w = wetNight(r.pts, r.limit);
-      r.wetWhy = w.why;
-      if (!w.wet) { r.result = "Don't treat"; r.reason = "Dry frost: " + w.why; return; }
+      if (!r.wetAny) { r.result = "Don't treat"; r.reason = "Dry frost: " + r.wetWhy; return; }
       if (r.pri === 3) {
         var cap = PLAN.capacityT[r.depot], fill = cap ? dep.saltStart / cap : null;
         r.fill = fill;
@@ -535,6 +529,38 @@
   }
 
   /* ---------- Rendering ---------- */
+  // Minimal markdown (headings, bold, bullets, tables). All text is escaped first, so nothing from the AI can inject HTML.
+  function renderMd(text) {
+    var lines = String(text).replace(/\r/g, "").split("\n"), out = [], i = 0, inList = false;
+    function inl(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); }
+    function closeList() { if (inList) { out.push("</ul>"); inList = false; } }
+    while (i < lines.length) {
+      var ln = lines[i], t = ln.trim();
+      if (/^\|.*\|$/.test(t)) {                      // table block
+        closeList();
+        var rows = [];
+        while (i < lines.length && /^\|.*\|$/.test(lines[i].trim())) { rows.push(lines[i].trim()); i++; }
+        var cells = function (r) { return r.slice(1, -1).split("|").map(function (c) { return c.trim(); }); };
+        var tb = "<div class='scroll'><table class='md'>";
+        rows.forEach(function (r, k) {
+          if (/^\|[\s:|-]+\|$/.test(r)) return;      // separator row
+          var tag = k === 0 ? "th" : "td";
+          tb += "<tr>" + cells(r).map(function (c) { return "<" + tag + ">" + inl(c) + "</" + tag + ">"; }).join("") + "</tr>";
+        });
+        out.push(tb + "</table></div>");
+        continue;
+      }
+      var hm = t.match(/^(#{1,4})\s+(.*)$/);
+      if (hm) { closeList(); out.push("<h4>" + inl(hm[2]) + "</h4>"); }
+      else if (/^[-*]\s+/.test(t)) { if (!inList) { out.push("<ul>"); inList = true; } out.push("<li>" + inl(t.replace(/^[-*]\s+/, "")) + "</li>"); }
+      else if (t === "") { closeList(); }
+      else { closeList(); out.push("<p>" + inl(t) + "</p>"); }
+      i++;
+    }
+    closeList();
+    return out.join("");
+  }
+
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function cls(res) { return "t-" + res.split(/[ ']/)[0]; }
 
@@ -613,7 +639,7 @@
   $("send").addEventListener("click", async function () {
     var btn = $("send"), q = $("question").value.trim();
     var provider = lsGet(LS.provider), model = lsGet(LS.model), key = lsGet(LS.key);
-    $("outCard").hidden = false; $("answerBlock").hidden = true; $("answer").textContent = "";
+    $("outCard").hidden = false; $("answerBlock").hidden = true; $("answer").innerHTML = ""; lastAnswer = "";
     $("error").textContent = ""; $("meta").textContent = ""; $("cost").textContent = ""; $("alerts").innerHTML = ""; $("tableCard").hidden = true;
 
     if (!q) { $("error").textContent = "Type a question first."; return; }
@@ -651,7 +677,7 @@
         if (parsed.stop_reason === "max_tokens") throw new Error("The model used up its whole output allowance (" + (parsed.usage && parsed.usage.output_tokens) + " tokens, mostly hidden thinking) before writing an answer. Ask again, or raise max_tokens in the code.\n\n" + raw);
         throw new Error("No answer text in the reply:\n" + raw);
       }
-      $("answer").textContent = text; $("answerBlock").hidden = false; $("decisionStatus").textContent = "";
+      lastAnswer = text; $("answer").innerHTML = renderMd(text); $("answerBlock").hidden = false; $("decisionStatus").textContent = "";
       $("cost").textContent = costLine(req.usage ? req.usage(parsed) : null);
       $("meta").textContent = "Answered by " + provider + " · " + model + " · " + fetchedAt + " · Advice only. The Duty Engineer decides and signs the night log.";
     } catch (e) {
@@ -662,7 +688,7 @@
   });
 
   function logDecision(verdict) {
-    var entry = { when: new Date().toLocaleString("en-IE"), verdict: verdict, question: $("question").value.trim(), advice: $("answer").textContent };
+    var entry = { when: new Date().toLocaleString("en-IE"), verdict: verdict, question: $("question").value.trim(), advice: lastAnswer };
     try {
       var log = JSON.parse(lsGet("ww_log") || "[]"); log.push(entry); lsSet("ww_log", JSON.stringify(log));
       $("decisionStatus").textContent = "Recorded in this browser's night log: " + verdict + " at " + entry.when + ". The AI only advised; this is the engineer's decision.";

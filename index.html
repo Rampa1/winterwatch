@@ -34,6 +34,9 @@
   .card.c-history  { border-top-color:#59a7dc; background:linear-gradient(180deg, #f4faff 0, #fff 90px); }
   .card h2 { margin:0 0 8px; font-size:1.08rem; color:var(--navy); }
   details > summary { cursor:pointer; font-weight:600; color:var(--navy); }
+  details.card > summary { font-size:1.08rem; font-weight:700; padding:2px 0; }
+  details.card[open] > summary { margin-bottom:10px; }
+  details.card > summary .src { font-size:.8rem; }
   label { display:block; font-size:.84rem; color:var(--mute); margin:10px 0 3px; }
   select, input, textarea { width:100%; padding:9px 10px; font:inherit; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); }
   select:focus, input:focus, textarea:focus { outline:2px solid #8cc4ee; border-color:var(--blue); }
@@ -181,22 +184,23 @@
     <div class="meta" id="meta"></div>
   </section>
 
-  <section class="card c-routes" id="tableCard" hidden>
-    <h2>Route lines (the numbers the AI was given)</h2>
+  <details class="card c-routes" id="tableCard" hidden>
+    <summary id="tableSummary">Route lines (the numbers the AI was given)</summary>
     <div class="src" id="tableSrc"></div>
     <div class="scroll"><table id="table"></table></div>
     <details style="margin-top:10px"><summary>Depots tonight (Source 1)</summary><div class="scroll"><table id="depotTable"></table></div></details>
     <details style="margin-top:10px"><summary>Exact message sent to the AI</summary><pre id="sent"></pre></details>
-  </section>
+  </details>
 
-  <section class="card c-history" id="histCard">
-    <h2>Five winters, summarised <span class="src">(Source 5, history.csv, fetched once when this page loaded; this is all the AI is told about the past)</span></h2>
+  <details class="card c-history" id="histCard">
+    <summary id="histSummary">Five winters, summarised <span class="src">&mdash; loading&hellip;</span></summary>
+    <div class="src">Source 5, history.csv, fetched once when this page loaded. This is all the AI is told about the past.</div>
     <div class="tiles" id="histTiles"></div>
     <div class="status" id="histStatus">Loading five winters…</div>
     <div class="alert" id="histLeft" hidden></div>
     <div class="scroll"><table id="histTable"></table></div>
     <div class="alert" id="histCheck" hidden style="margin-top:10px"></div>
-  </section>
+  </details>
   </div>
 </main>
 
@@ -398,7 +402,7 @@
   var YES = /^(1|true|yes|y|treated|gritted)$/i;
   var TEMP_COLS = ["min_air_c", "min_ground_c", "min_dewpoint_c", "forecast_ground_c"];
   var MAX_TEMP_C = 40;                                       // anything above this is an impossible reading
-  var EXCLUDE_IMPOSSIBLE = false;                            // false: such rows are flagged but still counted; true: they are left out of every total
+  var EXCLUDE_IMPOSSIBLE = true;                             // true: rows with an impossible temperature are left out of every total (and counted); false: flagged but still counted
 
   function num(v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; }
   function round2(x) { return Math.round(x * 100) / 100; }
@@ -565,6 +569,10 @@
   function cls(res) { return "t-" + res.split(/[ ']/)[0]; }
 
   function renderTables(result, depots, fetchedAt) {
+    var cnt = {}, parts = [];
+    result.routes.forEach(function (r) { cnt[r.result] = (cnt[r.result] || 0) + 1; });
+    ["Treat", "Flag", "Hold back", "Don't treat"].forEach(function (k) { if (cnt[k]) parts.push(cnt[k] + " " + k.toLowerCase()); });
+    $("tableSummary").innerHTML = "Route lines (the numbers the AI was given) <span class='src'>&mdash; " + esc(parts.join(" · ")) + " &middot; click to open</span>";
     $("tableSrc").textContent = "Sources fetched fresh at " + fetchedAt + ": depots (Source 1), routes (Source 2), forecast (Source 3 Open-Meteo, next 18 hours), plan (Source 4). Five winters (Source 5) was fetched once when the page loaded. Rules applied by code; the AI only explains.";
     var h = "<thead><tr><th>Route</th><th>Result</th><th>Salt (t)</th><th>Forecast min ground</th><th>First at or below 0 C</th><th>Wet</th><th>Why / timing</th></tr></thead><tbody>";
     result.routes.forEach(function (r) {
@@ -617,6 +625,8 @@
       "Rows as read " + asRead.rows.toLocaleString("en-IE") + " (check " + CHECK.rows.toLocaleString("en-IE") + ") &middot; runs " + asRead.runs + (EXCLUDE_IMPOSSIBLE ? " = " + T.runs + " used + " + L.runs + " left out" : "") + " (check " + CHECK.runs +
       ") &middot; salt " + asRead.salt.toFixed(2) + " t" + (EXCLUDE_IMPOSSIBLE ? " = " + T.salt.toFixed(2) + " used + " + L.salt.toFixed(2) + " left out" : "") + " (check " + CHECK.salt.toFixed(1) + ")" +
       (ok ? "" : "<br>Values seen in 'gritted': " + esc(JSON.stringify(hist.seenGritted)) + "<br>Values seen in 'decision': " + esc(JSON.stringify(hist.seenDecision)));
+    $("histSummary").innerHTML = "Five winters, summarised <span class='src'>&mdash; " + T.nights.toLocaleString("en-IE") + " nights &middot; " + T.runs + " runs &middot; " + T.salt.toFixed(1) + " t salt &middot; " +
+      hist.left.length + " row" + (hist.left.length === 1 ? "" : "s") + (EXCLUDE_IMPOSSIBLE ? " left out" : " flagged") + (ok ? " &middot; matches the check figures" : " &middot; DOES NOT MATCH the check figures") + " &middot; click to open</span>";
   }
 
   /* One fetch of history.csv, when the page loads (not on every question) */
@@ -629,6 +639,7 @@
   }).catch(function (e) {
     $("histStatus").textContent = "";
     $("histTable").innerHTML = "";
+    $("histSummary").innerHTML = "Five winters, summarised <span class='src'>&mdash; did not load (click to see why)</span>";
     var ck = $("histCheck"); ck.hidden = false; ck.style.borderLeftColor = "#a4262c";
     ck.textContent = "Five winters did not load: " + (e && e.message ? e.message : e) + " Reload the page to try again.";
     throw e;

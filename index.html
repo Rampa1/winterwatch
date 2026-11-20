@@ -60,6 +60,10 @@
       <input id="model" type="text" autocomplete="off" spellcheck="false">
       <label for="key">API key (stored only in this browser)</label>
       <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your key here">
+      <label for="pin">Price per million INPUT tokens (US$) <span class="src">(Anthropic prices prefilled; check your provider's page for others)</span></label>
+      <input id="pin" type="number" step="any" min="0" placeholder="e.g. 2">
+      <label for="pout">Price per million OUTPUT tokens (US$)</label>
+      <input id="pout" type="number" step="any" min="0" placeholder="e.g. 10">
       <div class="row">
         <button id="save" type="button">Save</button>
         <button id="forget" type="button" class="secondary">Forget key</button>
@@ -91,6 +95,7 @@
       <div class="status" id="decisionStatus"></div>
     </div>
     <div id="error"></div>
+    <div class="meta" id="cost" style="font-weight:600"></div>
     <div class="meta" id="meta"></div>
   </section>
 
@@ -119,6 +124,9 @@
     gemini: "gemini-2.5-flash",
     groq: "llama-3.3-70b-versatile"
   };
+  // US$ per million tokens (input, output). Source: platform.claude.com/docs/en/about-claude/pricing (Haiku: prompts up to 100k tokens).
+  var PRICES = { "claude-sonnet-5-5": [2, 10], "claude-opus-5-5": [4, 20], "claude-haiku-5-5": [0.10, 0.50], "claude-fable-5-2": [8, 40] };
+  var LS_PIN = "ww_pin", LS_POUT = "ww_pout", sessionCost = 0, sessionQs = 0;
   var $ = function (id) { return document.getElementById(id); };
   var providerEl = $("provider"), modelEl = $("model"), keyEl = $("key");
 
@@ -130,23 +138,29 @@
     var p = lsGet(LS.provider) || "anthropic";
     providerEl.value = p;
     modelEl.value = lsGet(LS.model) || DEFAULT_MODELS[p];
+    var dp = PRICES[modelEl.value] || [];
+    $("pin").value = lsGet(LS_PIN) !== null ? lsGet(LS_PIN) : (dp[0] !== undefined ? dp[0] : "");
+    $("pout").value = lsGet(LS_POUT) !== null ? lsGet(LS_POUT) : (dp[1] !== undefined ? dp[1] : "");
     var k = lsGet(LS.key);
     keyEl.value = "";
     keyEl.placeholder = k ? "Key saved in this browser (hidden)" : "Paste your key here";
     $("settingsStatus").textContent = k ? "A key is saved in this browser." : "No key saved yet.";
   }
-  providerEl.addEventListener("change", function () { modelEl.value = DEFAULT_MODELS[providerEl.value]; });
+  function prefillPrice() { var dp = PRICES[modelEl.value] || []; $("pin").value = dp[0] !== undefined ? dp[0] : ""; $("pout").value = dp[1] !== undefined ? dp[1] : ""; }
+  providerEl.addEventListener("change", function () { modelEl.value = DEFAULT_MODELS[providerEl.value]; prefillPrice(); });
+  modelEl.addEventListener("change", prefillPrice);
   $("save").addEventListener("click", function () {
     try {
       lsSet(LS.provider, providerEl.value);
       lsSet(LS.model, modelEl.value.trim() || DEFAULT_MODELS[providerEl.value]);
       if (keyEl.value.trim()) lsSet(LS.key, keyEl.value.trim());
+      lsSet(LS_PIN, $("pin").value.trim()); lsSet(LS_POUT, $("pout").value.trim());
       load();
       $("settingsStatus").textContent = "Saved.";
     } catch (e) { $("settingsStatus").textContent = "Could not save: " + e; }
   });
   $("forget").addEventListener("click", function () {
-    lsDel(LS.provider); lsDel(LS.model); lsDel(LS.key);
+    lsDel(LS.provider); lsDel(LS.model); lsDel(LS.key); lsDel(LS_PIN); lsDel(LS_POUT);
     keyEl.value = ""; load();
     $("settingsStatus").textContent = "Key forgotten.";
   });
@@ -403,7 +417,8 @@
         url: provider === "openai" ? "https://api.openai.com/v1/chat/completions" : "https://api.groq.com/openai/v1/chat/completions",
         init: { method: "POST", headers: Object.assign({ Authorization: "Bearer " + key }, json),
           body: JSON.stringify({ model: model, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) },
-        extract: function (d) { return d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content; }
+        extract: function (d) { return d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content; },
+        usage: function (d) { var u = d.usage || {}; return { inp: u.prompt_tokens, out: u.completion_tokens }; }
       };
     }
     if (provider === "anthropic") {
@@ -412,7 +427,8 @@
         init: { method: "POST",
           headers: Object.assign({ "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" }, json),
           body: JSON.stringify({ model: model, max_tokens: 1500, system: system, messages: [{ role: "user", content: user }] }) },
-        extract: function (d) { return (d.content || []).filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join("\n"); }
+        extract: function (d) { return (d.content || []).filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join("\n"); },
+        usage: function (d) { var u = d.usage || {}; return { inp: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0), out: u.output_tokens }; }
       };
     }
     if (provider === "gemini") {
@@ -420,10 +436,22 @@
         url: "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent",
         init: { method: "POST", headers: Object.assign({ "x-goog-api-key": key }, json),
           body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }] }) },
-        extract: function (d) { var c = d.candidates && d.candidates[0]; return c && c.content && c.content.parts && c.content.parts.map(function (p) { return p.text || ""; }).join(""); }
+        extract: function (d) { var c = d.candidates && d.candidates[0]; return c && c.content && c.content.parts && c.content.parts.map(function (p) { return p.text || ""; }).join(""); },
+        usage: function (d) { var u = d.usageMetadata || {}; return { inp: u.promptTokenCount, out: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) }; }
       };
     }
     throw new Error("Unknown provider: " + provider);
+  }
+
+  function costLine(u) {
+    if (!u || u.inp === undefined || u.out === undefined) return "Tokens: the provider did not report usage in this reply.";
+    var pin = parseFloat(lsGet(LS_PIN)), pout = parseFloat(lsGet(LS_POUT));
+    var line = "Tokens used: " + u.inp.toLocaleString("en-IE") + " in + " + u.out.toLocaleString("en-IE") + " out = " + (u.inp + u.out).toLocaleString("en-IE");
+    if (isNaN(pin) || isNaN(pout)) return line + ". Enter your model's prices in Settings (and Save) to see the cost.";
+    var cost = (u.inp * pin + u.out * pout) / 1e6;
+    sessionCost += cost; sessionQs += 1;
+    return line + " · cost this question US$" + cost.toFixed(4) + " (" + u.inp + " x $" + pin + "/M + " + u.out + " x $" + pout + "/M) · this visit: " + sessionQs +
+      " question" + (sessionQs === 1 ? "" : "s") + ", US$" + sessionCost.toFixed(4) + " in total";
   }
 
   /* ---------- Rendering ---------- */
@@ -475,7 +503,7 @@
     var btn = $("send"), q = $("question").value.trim();
     var provider = lsGet(LS.provider), model = lsGet(LS.model), key = lsGet(LS.key);
     $("outCard").hidden = false; $("answerBlock").hidden = true; $("answer").textContent = "";
-    $("error").textContent = ""; $("meta").textContent = ""; $("alerts").innerHTML = ""; $("tableCard").hidden = true;
+    $("error").textContent = ""; $("meta").textContent = ""; $("cost").textContent = ""; $("alerts").innerHTML = ""; $("tableCard").hidden = true;
 
     if (!q) { $("error").textContent = "Type a question first."; return; }
     if (!provider || !key) { $("error").textContent = "Save a provider and API key in Settings first."; return; }
@@ -511,6 +539,7 @@
       var text = req.extract(JSON.parse(raw));
       if (!text) throw new Error("No answer text in the reply:\n" + raw);
       $("answer").textContent = text; $("answerBlock").hidden = false; $("decisionStatus").textContent = "";
+      $("cost").textContent = costLine(req.usage ? req.usage(JSON.parse(raw)) : null);
       $("meta").textContent = "Answered by " + provider + " · " + model + " · " + fetchedAt + " · Advice only. The Duty Engineer decides and signs the night log.";
     } catch (e) {
       $("error").textContent = "Error: " + (e && e.message ? e.message : e);

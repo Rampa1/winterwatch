@@ -429,7 +429,7 @@
         url: "https://api.anthropic.com/v1/messages",
         init: { method: "POST",
           headers: Object.assign({ "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" }, json),
-          body: JSON.stringify({ model: model, max_tokens: 1500, system: system, messages: [{ role: "user", content: user }] }) },
+          body: JSON.stringify({ model: model, max_tokens: 8000, system: system, messages: [{ role: "user", content: user }] }) },
         extract: function (d) { return (d.content || []).filter(function (b) { return b.type === "text"; }).map(function (b) { return b.text; }).join("\n"); },
         usage: function (d) { var u = d.usage || {}; return { inp: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0), out: u.output_tokens }; }
       };
@@ -562,10 +562,13 @@
       var req = buildRequest(provider, model, key, SYSTEM, user);
       var res = await fetch(req.url, req.init), raw = await res.text();
       if (!res.ok) throw new Error("HTTP " + res.status + " " + res.statusText + "\n" + raw);
-      var text = req.extract(JSON.parse(raw));
-      if (!text) throw new Error("No answer text in the reply:\n" + raw);
+      var parsed = JSON.parse(raw), text = req.extract(parsed);
+      if (!text) {
+        if (parsed.stop_reason === "max_tokens") throw new Error("The model used up its whole output allowance (" + (parsed.usage && parsed.usage.output_tokens) + " tokens, mostly hidden thinking) before writing an answer. Ask again, or raise max_tokens in the code.\n\n" + raw);
+        throw new Error("No answer text in the reply:\n" + raw);
+      }
       $("answer").textContent = text; $("answerBlock").hidden = false; $("decisionStatus").textContent = "";
-      $("cost").textContent = costLine(req.usage ? req.usage(JSON.parse(raw)) : null);
+      $("cost").textContent = costLine(req.usage ? req.usage(parsed) : null);
       $("meta").textContent = "Answered by " + provider + " · " + model + " · " + fetchedAt + " · Advice only. The Duty Engineer decides and signs the night log.";
     } catch (e) {
       $("error").textContent = "Error: " + (e && e.message ? e.message : e);
